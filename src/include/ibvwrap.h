@@ -780,6 +780,12 @@ struct ibv_cq {
 	uint32_t		async_events_completed;
 };
 
+struct ibv_cq_channel {
+  struct ibv_comp_channel* channel;
+  struct ibv_cq* cq;
+};
+
+
 struct ibv_ah {
 	struct ibv_context     *context;
 	struct ibv_pd	       *pd;
@@ -1057,6 +1063,8 @@ ncclResult_t wrap_ibv_open_device(struct ibv_context **ret, struct ibv_device *d
 ncclResult_t wrap_ibv_close_device(struct ibv_context *context);
 ncclResult_t wrap_ibv_get_async_event(struct ibv_context *context, struct ibv_async_event *event);
 ncclResult_t wrap_ibv_ack_async_event(struct ibv_async_event *event);
+ncclResult_t wrap_ibv_get_cq_event(struct ibv_comp_channel *channel, struct ibv_cq **cq, void **cq_context);
+ncclResult_t wrap_ibv_ack_cq_events(struct ibv_cq *cq, unsigned int nevents);
 ncclResult_t wrap_ibv_query_device(struct ibv_context *context, struct ibv_device_attr *device_attr);
 ncclResult_t wrap_ibv_query_port(struct ibv_context *context, uint8_t port_num, struct ibv_port_attr *port_attr);
 ncclResult_t wrap_ibv_query_gid(struct ibv_context *context, uint8_t port_num, int index, union ibv_gid *gid);
@@ -1099,6 +1107,15 @@ static inline ncclResult_t wrap_ibv_post_recv(struct ibv_qp *qp, struct ibv_recv
   int ret = qp->context->ops.post_recv(qp, wr, bad_wr); /*returns 0 on success, or the value of errno on failure (which indicates the failure reason)*/
   if (ret != IBV_SUCCESS) {
     WARN("ibv_post_recv() failed with error %s", strerror(ret));
+    return ncclSystemError;
+  }
+  return ncclSuccess;
+}
+
+static inline ncclResult_t wrap_ibv_req_notify_cq(struct ibv_cq* cq, int solicited_only) {
+  int ret = cq->context->ops.req_notify_cq(cq, solicited_only);
+  if (ret != IBV_SUCCESS) {
+    WARN("ibv_req_notifiy_cq() failed with error %s", strerror(ret));
     return ncclSystemError;
   }
   return ncclSuccess;

@@ -20,6 +20,9 @@
 #include <poll.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <iostream>
+#include <chrono>
+#include <thread>
 
 #include "ibvwrap.h"
 
@@ -81,6 +84,49 @@ static void* ncclIbAsyncThreadMain(void* args) {
   }
   return NULL;
 }
+
+pthread_t ncclCqPollingThread;
+static void* ncclCqPollingThreadMain(void* _channel) {
+//  struct ibv_cq* cq = (struct ibv_cq*) _cq;
+//  struct ibv_cq_channel* icc = (struct ibv_cq_channel*)_icc;
+//  struct ibv_cq* cq = icc->cq;
+  struct ibv_comp_channel* channel = (struct ibv_comp_channel*) _channel;
+  struct ibv_cq* ack_cq;
+  struct ibv_wc wc;
+  void* ctx;
+  int wrDone;
+  std::cout << "[NCCL] 5" << std::endl;
+  while (1) {
+    wrap_ibv_get_cq_event(channel, &ack_cq, &ctx);
+    std::cout << "[NCCL] 6" << std::endl;
+    wrap_ibv_ack_cq_events(ack_cq, 1);
+    std::cout << "[NCCL] 7" << std::endl;
+    wrap_ibv_req_notify_cq(ack_cq, 0);
+    std::cout << "[NCCL] 8" << std::endl;
+    while (1) {
+      wrap_ibv_poll_cq(ack_cq, 1, &wc, &wrDone);
+      std::cout << "[NCCL] 9" << std::endl;
+      if (wrDone == 0) {
+        break;
+      }
+    }
+      }
+}
+
+//  static void* ncclCqPollingThreadMain(void* _cq) {
+//    struct ibv_cq* cq = (struct ibv_cq*) _cq;
+//    struct ibv_wc wc;
+//    int wrDone;
+//    while (1) {
+//      std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+//      if (ncclSuccess != wrap_ibv_poll_cq(cq, 1, &wc, &wrDone)) { break; }
+//      if (wrDone > 0) {
+//        std::cout << "[NCCL] Polling WC ID: "
+//                  << wc.wr_id << std::endl;
+//      }
+//    }
+//    return NULL;
+//  }
 
 static void initDevices() {
   if(wrap_ibv_symbols() != ncclSuccess) { return; }
@@ -347,7 +393,21 @@ struct ncclIbRecvComm {
 
 ncclResult_t ncclIbInitVerbs(ibv_context* ctx, struct ncclIbVerbs* verbs) {
   NCCLCHECK(wrap_ibv_alloc_pd(&verbs->pd, ctx));
-  NCCLCHECK(wrap_ibv_create_cq(&verbs->cq, ctx, MAX_REQUESTS, NULL, NULL, 0));
+  std::cout << "[NCCL] 1" << std::endl;
+  ibv_comp_channel* channel;
+//  NCCLCHECK(wrap_ibv_create_comp_channel(&verbs->cq->channel, ctx));
+  NCCLCHECK(wrap_ibv_create_comp_channel(&channel, ctx));
+  std::cout << "[NCCL] 2" << std::endl;
+//  NCCLCHECK(wrap_ibv_create_cq(&verbs->cq, ctx, MAX_REQUESTS, NULL, verbs->cq->channel, 0));
+  NCCLCHECK(wrap_ibv_create_cq(&verbs->cq, ctx, MAX_REQUESTS, NULL, channel, 0));
+  std::cout << "[NCCL] 3" << std::endl;
+  NCCLCHECK(wrap_ibv_req_notify_cq(verbs->cq, 0));
+  std::cout << "[NCCL] 4" << std::endl;
+//  ibv_cq_channel* icc = malloc(sizeof(ibv_cq_channel));
+//  icc->channel = channel;
+//  icc->cq = verbs->cq;
+//  pthread_create(&ncclCqPollingThread, NULL, ncclCqPollingThreadMain, verbs->cq);
+  pthread_create(&ncclCqPollingThread, NULL, ncclCqPollingThreadMain, channel);
   return ncclSuccess;
 }
 

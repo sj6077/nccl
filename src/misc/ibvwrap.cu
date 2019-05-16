@@ -36,9 +36,13 @@ struct ibv_qp * (*ibv_internal_create_qp)(struct ibv_pd *pd, struct ibv_qp_init_
 int (*ibv_internal_modify_qp)(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask);
 int (*ibv_internal_destroy_qp)(struct ibv_qp *qp);
 const char * (*ibv_internal_event_type_str)(enum ibv_event_type event);
+struct ibv_comp_channel * (*ibv_internal_create_comp_channel)(struct ibv_context* context);
+int (*ibv_internal_get_cq_event)(struct ibv_comp_channel *channel, struct ibv_cq **cq, void **cq_context);
+int (*ibv_internal_ack_cq_events)(struct ibv_cq *cq, unsigned int nevents);
 
 // IBVERBS Library versioning
 #define IBVERBS_VERSION "IBVERBS_1.1"
+#define IBVERBS_VERSION_2 "IBVERBS_1.0"
 
 ncclResult_t wrap_ibv_symbols(void) {
   if (ibvState == ibvInitialized)
@@ -65,14 +69,17 @@ ncclResult_t wrap_ibv_symbols(void) {
     }
   }
 
-#define LOAD_SYM(handle, symbol, funcptr) do {         \
-    cast = (void**)&funcptr;                             \
-    tmp = dlvsym(handle, symbol, IBVERBS_VERSION);       \
-    if (tmp == NULL) {                                   \
-      WARN("dlvsym failed on %s - %s version %s", symbol, dlerror(), IBVERBS_VERSION);  \
-      goto teardown;                                     \
-    }                                                    \
-    *cast = tmp;                                         \
+#define LOAD_SYM(handle, symbol, funcptr) do {                                            \
+    cast = (void**)&funcptr;                                                              \
+    tmp = dlvsym(handle, symbol, IBVERBS_VERSION);                                        \
+    if (tmp == NULL) {                                                                    \
+      tmp = dlvsym(handle, symbol, IBVERBS_VERSION_2);                                    \
+      if (tmp == NULL) {                                                                  \
+        WARN("dlvsym failed on %s - %s version %s", symbol, dlerror(), IBVERBS_VERSION);  \
+        goto teardown;                                                                    \
+      }                                                                                   \
+    }                                                                                     \
+    *cast = tmp;                                                                          \
   } while (0)
 
   LOAD_SYM(ibvhandle, "ibv_get_device_list", ibv_internal_get_device_list);
@@ -97,6 +104,9 @@ ncclResult_t wrap_ibv_symbols(void) {
   LOAD_SYM(ibvhandle, "ibv_destroy_qp", ibv_internal_destroy_qp);
   LOAD_SYM(ibvhandle, "ibv_fork_init", ibv_internal_fork_init);
   LOAD_SYM(ibvhandle, "ibv_event_type_str", ibv_internal_event_type_str);
+  LOAD_SYM(ibvhandle, "ibv_create_comp_channel", ibv_internal_create_comp_channel);
+  LOAD_SYM(ibvhandle, "ibv_get_cq_event", ibv_internal_get_cq_event);
+  LOAD_SYM(ibvhandle, "ibv_ack_cq_events", ibv_internal_ack_cq_events);
 
   ibvState = ibvInitialized;
   return ncclSuccess;
@@ -124,6 +134,9 @@ teardown:
   ibv_internal_destroy_qp = NULL;
   ibv_internal_fork_init = NULL;
   ibv_internal_event_type_str = NULL;
+  ibv_internal_create_comp_channel = NULL;
+  ibv_internal_get_cq_event = NULL;
+  ibv_internal_ack_cq_events = NULL;
 
   if (ibvhandle != NULL) dlclose(ibvhandle);
   ibvState = ibvError;
@@ -282,6 +295,18 @@ ncclResult_t wrap_ibv_create_qp(struct ibv_qp **ret, struct ibv_pd *pd, struct i
 
 ncclResult_t wrap_ibv_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask) { /*returns 0 on success, or the value of errno on failure (which indicates the failure reason)*/
   IBV_INT_CHECK_RET_ERRNO(ibv_internal_modify_qp, ibv_internal_modify_qp(qp, attr, attr_mask), 0, "ibv_modify_qp");
+}
+
+ncclResult_t wrap_ibv_create_comp_channel(struct ibv_comp_channel **ret, struct ibv_context *context) {
+  IBV_PTR_CHECK(ibv_internal_create_comp_channel, ibv_internal_create_comp_channel(context), *ret, NULL, "ibv_create_comp_channel");
+}
+
+ncclResult_t wrap_ibv_get_cq_event(struct ibv_comp_channel *channel, struct ibv_cq **cq, void **cq_context) {
+  IBV_INT_CHECK_RET_ERRNO(ibv_internal_get_cq_event, ibv_internal_get_cq_event(channel, cq, cq_context), 0, "ibv_get_cq_event");
+}
+
+ncclResult_t wrap_ibv_ack_cq_events(struct ibv_cq *cq, unsigned int nevents) {
+  IBV_INT_CHECK_RET_ERRNO(ibv_internal_ack_cq_events, ibv_internal_ack_cq_events(cq, nevents), 0, "ibv_ack_cq_events");
 }
 
 ncclResult_t wrap_ibv_event_type_str(char **ret, enum ibv_event_type event) {
