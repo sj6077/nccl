@@ -471,13 +471,6 @@ ncclResult_t netRecvProxy(struct ncclProxyArgs* args) {
   int idle = 0;
   void* requests[args->substeps];
 
-  int nranks = ring->recv.proxyInfo->comm->nRanks;
-  int from = ring->userRanks[nranks-1];
-  int to = ring->recv.proxyInfo->comm->rank;
-
-  uint64_t start_micros, end_micros;
-  int recvSize = 0;
-
   if (!args->needProxy) goto nextColl;
 
   TRACE(NET,"opCount %lx head %lx tail %lx end %lx nsteps %d llMode %d", args->opCount, head, tail, end, args->nsteps, llMode);
@@ -489,13 +482,11 @@ ncclResult_t netRecvProxy(struct ncclProxyArgs* args) {
     transportProxyWait([=] { return *nextOpCount >= args->opCount; });
   }
 
-  start_micros = now_micros();
   while (head < end) {
     idle++;
     if ((tail < head + args->substeps) && (tail < *nextHead + args->substeps) && (tail < end)) {
       int slot = tail%args->substeps;
       NCCLCHECK(ncclNetIrecv(resources->netRecvComm, localBuff+slot*sliceSize, sliceSize, ptrType, requests+slot));
-      recvSize += sliceSize;
       tail++;
       idle = 0;
     }
@@ -515,10 +506,6 @@ ncclResult_t netRecvProxy(struct ncclProxyArgs* args) {
       }
     }
     if (idle) transportProxyIdle(idle);
-  }
-  end_micros = now_micros();
-  if (args->nccl_prof != nullptr) {
-    create_comm_stat(args->nccl_prof, NET_RECV, from, to, start_micros, end_micros, recvSize);
   }
 
   // Wait for last ack and reset
