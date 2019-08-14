@@ -138,7 +138,8 @@ class Primitives {
       const SRC2_T src2,
       T*     dst1,
       DST2_T dst2,
-      int len, int maxoffset, uint64_t step, SYNC_Ts... flags) {
+      int len, int maxoffset, uint64_t step, 
+      struct commStat* dev_comm_stat, int* index, SYNC_Ts... flags) {
 
     enum { noSrc2 = std::is_same<SRC2_T, nullptr_t>::value };
     enum { noDst2 = std::is_same<DST2_T, nullptr_t>::value };
@@ -155,10 +156,12 @@ class Primitives {
 #pragma unroll 1
     for (int sub=0; sub<SUBSTEPS; ++sub) {
       int realSize = max(0, min(sliceSize, maxoffset-sliceOffset));
+      long long int start_time = 0;
       if (tid < nthreads) {
         if (AnyAre<WaitFlag>(flags...)) {
           if (tid == 0) {
             WaitOnFlags(SUBSTEPS*step + sub + 1, flags...);
+	    start_time = clock64();
           }
           asm volatile ("bar.sync 1, %0;" :: "r"(nthreads));
         }
@@ -189,6 +192,16 @@ class Primitives {
           PostToFlags(SUBSTEPS*step + sub + 1, flags...);
         }
       }
+
+      if (dev_comm_stat != nullptr && index != nullptr) {
+        int index_ = atomicAdd(index, 1);
+        dev_comm_stat[index_].comm_type = NET_INTRA;
+        dev_comm_stat[index_].from_rank =  -1;
+        dev_comm_stat[index_].to_rank = -1;
+        dev_comm_stat[index_].start_micros = start_time;
+	dev_comm_stat[index_].end_micros = clock64();
+        dev_comm_stat[index_].comm_bytes = realSize;
+      }
       sliceOffset += sliceSize;
     }
   }
@@ -197,29 +210,37 @@ class Primitives {
   template <typename... SYNC_Ts>
   static __device__ __forceinline__ void
   Copy(const int tid, const int nthreads, const T* src, T* dst,
-      int len, int maxOffset, uint64_t step, SYNC_Ts... flags) {
-    GenericOp(tid, nthreads, src, nullptr, dst, nullptr, len, maxOffset, step, flags...);
+      int len, int maxOffset, uint64_t step, struct commStat* dev_comm_stat, 
+      int* index, SYNC_Ts... flags) {
+    GenericOp(tid, nthreads, src, nullptr, dst, nullptr, len, maxOffset, step, 
+        dev_comm_stat, index, flags...);
   }
 
   template <typename... SYNC_Ts>
   static __device__ __forceinline__ void
   DoubleCopy(const int tid, const int nthreads, const T* src, T* dst1, T* dst2,
-      int len, int maxOffset, uint64_t step, SYNC_Ts... flags) {
-    GenericOp(tid, nthreads, src, nullptr, dst1, dst2, len, maxOffset, step, flags...);
+      int len, int maxOffset, uint64_t step, struct commStat* dev_comm_stat, 
+      int* index, SYNC_Ts... flags) {
+    GenericOp(tid, nthreads, src, nullptr, dst1, dst2, len, maxOffset, step,
+        dev_comm_stat, index, flags...);
   }
 
   template <typename... SYNC_Ts>
   static __device__ __forceinline__ void
   Reduce(const int tid, const int nthreads, const T* src1, const T* src2, T* dst,
-      int len, int maxOffset, uint64_t step, SYNC_Ts... flags) {
-    GenericOp(tid, nthreads, src1, src2, dst, nullptr, len, maxOffset, step, flags...);
+      int len, int maxOffset, uint64_t step, struct commStat* dev_comm_stat, 
+      int* index, SYNC_Ts... flags) {
+    GenericOp(tid, nthreads, src1, src2, dst, nullptr, len, maxOffset, step, 
+        dev_comm_stat, index, flags...);
   }
 
   template <typename... SYNC_Ts>
   static __device__ __forceinline__ void
   ReduceCopy(const int tid, const int nthreads, const T* src1, const T* src2, T* dst1, T* dst2,
-      int len, int maxOffset, uint64_t step, SYNC_Ts... flags) {
-    GenericOp(tid, nthreads, src1, src2, dst1, dst2, len, maxOffset, step, flags...);
+      int len, int maxOffset, uint64_t step, struct commStat* dev_comm_stat, 
+      int* index, SYNC_Ts... flags) {
+    GenericOp(tid, nthreads, src1, src2, dst1, dst2, len, maxOffset, step,
+        dev_comm_stat, index, flags...);
   }
 };
 

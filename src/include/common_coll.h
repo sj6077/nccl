@@ -10,6 +10,7 @@
 #include "core.h"
 #include "enqueue.h"
 #include "collectives/collectives.h"
+#include "utils.h"
 
 static ncclResult_t PointerCheck(const void* pointer, struct ncclComm* comm, const char* ptrname, const char* opname) {
   cudaPointerAttributes attr;
@@ -134,7 +135,8 @@ static inline void ncclGetCollResource(ncclComm_t comm, size_t nbytes, int* nrin
 }
 
 static ncclResult_t saveKernel(int coll, const void* sendbuff, void* recvbuff, size_t count,
-    ncclDataType_t dtype, ncclRedOp_t op, int root, ncclComm_t comm, cudaStream_t stream, size_t nbytes, int loopFactor) {
+    ncclDataType_t dtype, ncclRedOp_t op, int root, ncclComm_t comm, cudaStream_t stream, size_t nbytes, int loopFactor,
+    ncclProf_t* nccl_prof) {
   int llMode, nBlocks, nThreads;
   ncclGetCollResource(comm, nbytes, &nBlocks, &nThreads, &llMode);
   comm->myParams->blockDim.x = std::max((int)comm->myParams->blockDim.x, nThreads);
@@ -177,6 +179,14 @@ static ncclResult_t saveKernel(int coll, const void* sendbuff, void* recvbuff, s
     args->nRings = nBlocks;
     args->nThreads = nThreads;
     args->lastChunkSize = lastChunkSize;
+    if (nccl_prof != nullptr) {
+      int array_size = comm->nRanks * 100;
+      NCCLCHECK(ncclCudaCalloc(&nccl_prof->dev_comm_stat, array_size));
+      args->dev_comm_stat = nccl_prof->dev_comm_stat;
+      nccl_prof->kernel_start_micros = now_micros();
+    } else {
+      args->dev_comm_stat = nullptr;
+    }
 
     c->nThreads = nThreads;
     c->funcIndex = FUNC_INDEX(coll, op, dtype, llMode);
@@ -189,7 +199,6 @@ static ncclResult_t saveKernel(int coll, const void* sendbuff, void* recvbuff, s
   /*if (llMode == 0)*/ comm->opCount++;
   return ncclSuccess;
 }
-
 extern __global__ void ncclMultiOpKernel (struct ncclColl firstColl);
 
 #endif

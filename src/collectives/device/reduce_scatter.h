@@ -22,6 +22,8 @@ __device__ void ncclReduceScatterKernel(struct CollectiveArgs* args) {
   const int bid = args->bid;
   struct ncclComm* comm = args->comm;
   struct ncclRing* ring = comm->rings+blockIdx.x;
+  int* index = nullptr;
+  struct commStat* dev_comm_stat = args->dev_comm_stat;
 
   WaitFlag waitDoneFromNext(ring->send.conn.head, REDUCESCATTER_BUFCHUNKS*REDUCESCATTER_SUBSTEPS);
   WaitFlag waitReadyFromPrev(ring->recv.conn.tail, REDUCESCATTER_SUBSTEPS);
@@ -73,6 +75,8 @@ __device__ void ncclReduceScatterKernel(struct CollectiveArgs* args) {
         nextOutput + noffset,
         sliceSize, maxOffset,
         step,
+        dev_comm_stat,
+	index,
         waitDoneFromNext,
         postReadyToNext);
 
@@ -89,6 +93,8 @@ __device__ void ncclReduceScatterKernel(struct CollectiveArgs* args) {
           nextOutput + noffset,
           sliceSize, maxOffset,
           step,
+          dev_comm_stat,
+	  index,
           waitDoneFromNext, waitReadyFromPrev,
           postReadyToNext, postDoneToPrev);
 
@@ -106,6 +112,8 @@ __device__ void ncclReduceScatterKernel(struct CollectiveArgs* args) {
         thisOutput + chunkOffset,
         sliceSize, maxOffset,
         step,
+	dev_comm_stat,
+	index,
         waitReadyFromPrev,
         postDoneToPrev);
   }

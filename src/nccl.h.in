@@ -31,7 +31,9 @@ typedef struct ncclComm* ncclComm_t;
 
 /* Profiling support for DL Frameworks (supports only TF now) */
 typedef enum { NET_SEND = 0,
-               NET_RECV = 1} commType_t;
+               NET_RECV = 1,
+               NET_INTRA_E2E = 2,
+               NET_INTRA = 3} commType_t;
 
 typedef struct commStat {
   commType_t comm_type;
@@ -46,6 +48,8 @@ typedef struct ncclProf {
   char* tensor_name;
   pthread_mutex_t mu_;
   std::vector<commStat_t*>* stat_vector;
+  struct commStat* dev_comm_stat;
+  uint64_t kernel_start_micros;
 } ncclProf_t;
 
 #define NCCL_UNIQUE_ID_BYTES 128
@@ -266,6 +270,11 @@ ncclResult_t ncclGroupStart();
  * before returning.
  */
 ncclResult_t ncclGroupEnd();
+
+/*
+ * Get device log for intra communication.
+ */
+ncclResult_t ncclGetDeviceLog(ncclProf_t *nccl_prof);
 
 #ifdef __cplusplus
 } // end extern "C"

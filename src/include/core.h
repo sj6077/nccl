@@ -164,7 +164,7 @@ struct ncclRing {
 };
 static_assert(sizeof(struct ncclRing) == 0x80*sizeof(int), "ncclRing must have a pow2 size");
 
-/* CollectiveArgs + ncclColl are to be a power of two, currently 64 bytes, */
+/* CollectiveArgs + ncclColl are to be a power of two, currently 128 bytes, */
 /* to make sure reads to host from the CUDA kernel are aligned. */
 /* Make sure to adjust padding at the end of ncclColl. */
 struct CollectiveArgs {
@@ -183,6 +183,7 @@ struct CollectiveArgs {
   uint16_t nThreads;
 
   int lastChunkSize;
+  struct commStat* dev_comm_stat;
 };
 struct ncclColl {
   union {
@@ -193,10 +194,10 @@ struct ncclColl {
       uint16_t nextIndex;
       uint8_t  active;
     };
-    int data[0x10];
+    int data[0x80];
   };
 };
-static_assert(sizeof(struct ncclColl) == (0x10*sizeof(int)), "ncclColl must have a pow2 size");
+static_assert(sizeof(struct ncclColl) == (0x80*sizeof(int)), "ncclColl must have a pow2 size");
 
 struct ncclComm {
   struct ncclRing rings[MAXRINGS];

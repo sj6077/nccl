@@ -24,6 +24,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
   struct ncclRing* ring = comm->rings+blockIdx.x;
   int prevdirect = ring->recv.conn.direct;
   int nextdirect = ring->send.conn.direct;
+  int* index = nullptr;
+  struct commStat* dev_comm_stat = args->dev_comm_stat;
 
   WaitFlag waitDoneFromNext(ring->send.conn.head, (BROADCAST_BUFCHUNKS-1)*BROADCAST_SUBSTEPS);
   WaitFlag waitReadyFromPrev(ring->recv.conn.tail, 0);
@@ -82,6 +84,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + boffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+            index,
             waitDoneFromNext,
             postReadyToNext);
       } else {
@@ -91,6 +95,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + boffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+            index,
             waitDoneFromNext,
             postReadyToNext);
       }
@@ -101,6 +107,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
           thisOutput + offset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+          index,
           waitReadyFromPrev,
           postDoneToPrev);
     } else {
@@ -110,6 +118,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + boffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+            index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
       } else {
@@ -119,6 +129,8 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + boffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+            index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
       }
@@ -135,6 +147,9 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
     *ring->recv.conn.tail = 0ULL;
     __threadfence_system();
     *ring->recv.conn.opCount = args->opCount+1;
+    if (dev_comm_stat != nullptr) {
+      dev_comm_stat[0].end_micros = clock64();
+    }
   }
 }
 

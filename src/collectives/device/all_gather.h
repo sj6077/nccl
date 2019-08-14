@@ -25,6 +25,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
   struct ncclRing* ring = comm->rings+blockIdx.x;
   int prevdirect = ring->recv.conn.direct;
   int nextdirect = ring->send.conn.direct;
+  struct commStat* dev_comm_stat = args->dev_comm_stat;
+  int* index = nullptr;
 
   WaitFlag waitDoneFromNext(ring->send.conn.head, ALLGATHER_BUFCHUNKS*ALLGATHER_SUBSTEPS);
   WaitFlag waitReadyFromPrev(ring->recv.conn.tail, ALLGATHER_SUBSTEPS);
@@ -86,6 +88,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
           nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitDoneFromNext,
           postReadyToNext);
     } else {
@@ -95,6 +99,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
           nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitDoneFromNext,
           postReadyToNext);
     }
@@ -112,6 +118,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+	    index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
 
@@ -122,6 +130,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
           NULL,
           0, 0,
           step,
+	  dev_comm_stat,
+	  index,
           waitReadyFromPrev,
           postDoneToPrev);
     } else {
@@ -135,6 +145,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+	    index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
 
@@ -151,6 +163,8 @@ __device__ void ncclAllGatherKernel(struct CollectiveArgs* args) {
           thisOutput + offset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitReadyFromPrev,
           postDoneToPrev);
     }

@@ -21,6 +21,8 @@ __device__ void ncclReduceKernel(struct CollectiveArgs* args) {
   const int bid = args->bid;
   struct ncclComm* comm = args->comm;
   struct ncclRing* ring = comm->rings+blockIdx.x;
+  int* index = nullptr;
+  struct commStat* dev_comm_stat = args->dev_comm_stat;
 
   WaitFlag waitDoneFromNext(ring->send.conn.head, (REDUCE_BUFCHUNKS-1)*REDUCE_SUBSTEPS);
   WaitFlag waitReadyFromPrev(ring->recv.conn.tail, 0);
@@ -70,6 +72,8 @@ __device__ void ncclReduceKernel(struct CollectiveArgs* args) {
           nextOutput + boffset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitDoneFromNext,
           postReadyToNext);
     } else if (rank == root) {
@@ -79,6 +83,8 @@ __device__ void ncclReduceKernel(struct CollectiveArgs* args) {
           thisOutput + offset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitReadyFromPrev,
           postDoneToPrev);
     } else {
@@ -88,6 +94,8 @@ __device__ void ncclReduceKernel(struct CollectiveArgs* args) {
           nextOutput + boffset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitDoneFromNext, waitReadyFromPrev,
           postReadyToNext, postDoneToPrev);
     }
@@ -103,6 +111,9 @@ __device__ void ncclReduceKernel(struct CollectiveArgs* args) {
     *ring->recv.conn.tail = 0ULL;
     __threadfence_system();
     *ring->recv.conn.opCount = args->opCount+1;
+    if (dev_comm_stat != nullptr) {
+      dev_comm_stat[0].end_micros = clock64();
+    }
   }
 }
 

@@ -25,6 +25,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
   struct ncclRing* ring = comm->rings+blockIdx.x;
   int prevdirect = ring->recv.conn.direct;
   int nextdirect = ring->send.conn.direct;
+  struct commStat* dev_comm_stat = args->dev_comm_stat;
+  int* index = nullptr;
 
   WaitFlag waitDoneFromNext(ring->send.conn.head, ALLREDUCE_BUFCHUNKS*ALLREDUCE_SUBSTEPS);
   WaitFlag waitReadyFromPrev(ring->recv.conn.tail, ALLREDUCE_SUBSTEPS);
@@ -41,6 +43,14 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
   const ssize_t loopSize = args->nRings*(ssize_t)sliceSize;
 
   if (tid == 0) {
+    if (dev_comm_stat != nullptr) {
+      dev_comm_stat[0].comm_type = NET_INTRA_E2E;
+      dev_comm_stat[0].from_rank =  comm->rank;
+      dev_comm_stat[0].to_rank = (comm->rank + 1) % nranks;
+      dev_comm_stat[0].start_micros = clock64();
+      dev_comm_stat[0].comm_bytes = 1;
+      index = &(dev_comm_stat[0].comm_bytes);
+    }
     // Update in case we skipped some collectives
     *ring->recv.conn.opCount = args->opCount;
     // Wait for next to be ready
@@ -87,6 +97,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
         nextOutput + noffset,
         sliceSize, maxOffset,
         step,
+	dev_comm_stat,
+	index,
         waitDoneFromNext,
         postReadyToNext);
 
@@ -104,6 +116,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
           nextOutput + noffset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitDoneFromNext, waitReadyFromPrev,
           postReadyToNext, postDoneToPrev);
 
@@ -123,6 +137,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
         thisOutput + offset,
         sliceSize, maxOffset,
         step,
+	dev_comm_stat,
+	index,
         waitDoneFromNext, waitReadyFromPrev,
         postReadyToNext, postDoneToPrev);
 
@@ -140,6 +156,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+	    index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
 
@@ -150,6 +168,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
           NULL,
           0, 0,
           step,
+	  dev_comm_stat,
+	  index,
           waitReadyFromPrev,
           postDoneToPrev);
     } else {
@@ -164,6 +184,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
             nextdirect ? (sharedNextOutput + offset) : (nextOutput + noffset),
             sliceSize, maxOffset,
             step,
+	    dev_comm_stat,
+	    index,
             waitDoneFromNext, waitReadyFromPrev,
             postReadyToNext, postDoneToPrev);
 
@@ -181,6 +203,8 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
           thisOutput + offset,
           sliceSize, maxOffset,
           step,
+	  dev_comm_stat,
+	  index,
           waitReadyFromPrev,
           postDoneToPrev);
     }
@@ -193,6 +217,10 @@ __device__ void ncclAllReduceKernel(struct CollectiveArgs* args) {
     *ring->recv.conn.tail = 0ULL;
     __threadfence_system();
     *ring->recv.conn.opCount = args->opCount+1;
+    if (dev_comm_stat != nullptr) {
+      dev_comm_stat[0].end_micros = clock64();
+      atomicAdd(index, -1);
+    }
   }
 }
 
